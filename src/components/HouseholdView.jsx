@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, uploadImage } from '../lib/supabase'
 import { STATUSES, CATEGORIES, PRIORITIES, statusMeta, timeAgo, initials } from '../lib/helpers'
 
@@ -185,11 +185,14 @@ function NewIssueModal({ householdId, profile, close, done }) {
   const [previews, setPreviews] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const camRef = useRef(null)
+  const galRef = useRef(null)
 
-  function pickFiles(e) {
-    const list = Array.from(e.target.files || []).slice(0, 6)
+  function addFiles(e) {
+    const list = [...files, ...Array.from(e.target.files || [])].slice(0, 6)
     setFiles(list)
     setPreviews(list.map(f => URL.createObjectURL(f)))
+    e.target.value = ''
   }
 
   async function submit(e) {
@@ -251,7 +254,12 @@ function NewIssueModal({ householdId, profile, close, done }) {
           </div>
           <div className="field">
             <label>Photos (optional, up to 6)</label>
-            <input type="file" accept="image/*" multiple onChange={pickFiles} />
+            <div className="photo-buttons">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => camRef.current?.click()}>📷 Take photo</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => galRef.current?.click()}>🖼️ Choose photos</button>
+            </div>
+            <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFiles} />
+            <input ref={galRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={addFiles} />
             {previews.length > 0 && (
               <div className="photo-thumbs">
                 {previews.map((src, i) => <img key={i} src={src} alt="" />)}
