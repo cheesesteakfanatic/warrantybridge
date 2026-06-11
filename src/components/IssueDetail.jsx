@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase, uploadImage, publicUrl } from '../lib/supabase'
 import { STATUSES, CATEGORIES, PRIORITIES, statusMeta, fmtDateTime, initials } from '../lib/helpers'
-import { IArrowLeft, IPencil, ICamera, IImage, ICheck } from './Icons'
+import { IArrowLeft, IPencil, ICamera, IImage, ICheck, ITrash, IClock } from './Icons'
 
 export default function IssueDetail({ issueId, profile, back }) {
   const [issue, setIssue] = useState(null)
@@ -18,6 +18,8 @@ export default function IssueDetail({ issueId, profile, back }) {
   const [statusNote, setStatusNote] = useState('')
   const [showEdit, setShowEdit] = useState(false)
   const [canWrite, setCanWrite] = useState(true)
+  const [isManager, setIsManager] = useState(false)
+  const [proposals, setProposals] = useState([])
   const [error, setError] = useState('')
   const threadRef = useRef(null)
   const fileRef = useRef(null)
@@ -33,11 +35,18 @@ export default function IssueDetail({ issueId, profile, back }) {
     setIssue(iss); setPhotos(ph || []); setEvents(ev || []); setMessages(msgs || [])
 
     let writer = true
+    let props = []
     if (iss) {
-      const { data: mem } = await supabase.from('household_members')
-        .select('member_role').eq('household_id', iss.household_id).eq('user_id', profile.id).maybeSingle()
+      const [{ data: mem }, { data: hh }, { data: pr }] = await Promise.all([
+        supabase.from('household_members').select('member_role').eq('household_id', iss.household_id).eq('user_id', profile.id).maybeSingle(),
+        supabase.from('households').select('created_by').eq('id', iss.household_id).maybeSingle(),
+        supabase.from('schedule_proposals').select('*').eq('issue_id', issueId).order('created_at', { ascending: false }),
+      ])
       writer = mem?.member_role === 'buyer' || mem?.member_role === 'builder'
+      props = pr || []
       setCanWrite(writer)
+      setIsManager(hh?.created_by === profile.id)
+      setProposals(props)
     }
 
     const ids = (msgs || []).map(m => m.id)
@@ -50,6 +59,7 @@ export default function IssueDetail({ issueId, profile, back }) {
     const uids = new Set()
     ;(msgs || []).forEach(m => uids.add(m.sender_id))
     ;(ev || []).forEach(e => e.actor_id && uids.add(e.actor_id))
+    props.forEach(p => { if (p.proposed_by) uids.add(p.proposed_by); if (p.decided_by) uids.add(p.decided_by) })
     if (iss) uids.add(iss.created_by)
     if (uids.size) {
       const { data: profs } = await supabase.from('profiles').select('*').in('id', [...uids])
@@ -81,6 +91,7 @@ export default function IssueDetail({ issueId, profile, back }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reads' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'issues', filter: `id=eq.${issueId}` }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'issue_events', filter: `issue_id=eq.${issueId}` }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'schedule_proposals', filter: `issue_id=eq.${issueId}` }, load)
       .subscribe()
     const t = setInterval(load, 10000)
     return () => { supabase.removeChannel(ch); clearInterval(t) }
@@ -135,6 +146,13 @@ export default function IssueDetail({ issueId, profile, back }) {
     setStatusBusy(false)
   }
 
+  async function deleteIssue() {
+    if (!window.confirm(`Permanently delete "${issue.title}" and its entire record (photos, messages, timeline)? This cannot be undone.`)) return
+    const { error: e1 } = await supabase.from('issues').delete().eq('id', issue.id)
+    if (e1) setError(e1.message)
+    else back()
+  }
+
   if (!issue) return <div className="spinner" />
   const sm = statusMeta(issue.status)
   const reporter = profiles[issue.created_by]
@@ -153,6 +171,9 @@ export default function IssueDetail({ issueId, profile, back }) {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {canWrite && issue.created_by === profile.id && !['closed'].includes(issue.status) && (
               <button className="btn btn-sm btn-ghost" onClick={() => setShowEdit(true)}><IPencil size={13} /> Edit</button>
+            )}
+            {isManager && (
+              <button className="btn btn-sm btn-ghost danger-btn" title="Delete this issue" onClick={deleteIssue}><ITrash size={13} /></button>
             )}
             <span className="badge" style={{ color: sm.color, background: sm.bg, fontSize: 13, padding: '6px 14px' }}>
               <span className="dot" />{sm.label}
@@ -222,6 +243,18 @@ export default function IssueDetail({ issueId, profile, back }) {
           close={() => setShowEdit(false)}
           done={async () => { setShowEdit(false); await load() }}
         />
+      )}
+
+      {!['resolved', 'closed'].includes(issue.status) && (
+        <>
+          <div className="section-title">Repair scheduling</div>
+          <div className="card" style={{ padding: '18px 22px' }}>
+            <ScheduleCard
+              proposals={proposals} canWrite={canWrite} profile={profile}
+              profiles={profiles} issue={issue} reload={load} setError={setError}
+            />
+          </div>
+        </>
       )}
 
       <div className="section-title">Activity & repair timeline</div>
@@ -323,6 +356,118 @@ export default function IssueDetail({ issueId, profile, back }) {
           </button>
         </form>}
       </div>
+    </>
+  )
+}
+
+function ScheduleCard({ proposals, canWrite, profile, profiles, issue, reload, setError }) {
+  const [showForm, setShowForm] = useState(false)
+  const [date, setDate] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const pending = proposals.find(p => p.status === 'pending')
+  const accepted = proposals.find(p => p.status === 'accepted')
+  const fmt = (d) => new Date(d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) +
+    ' at ' + new Date(d).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const who = (id) => profiles[id]?.full_name || 'A member'
+
+  async function propose(e) {
+    e.preventDefault(); setBusy(true); setError('')
+    try {
+      if (pending) {
+        await supabase.from('schedule_proposals').update({ status: 'superseded', decided_by: profile.id, decided_at: new Date().toISOString() }).eq('id', pending.id)
+      }
+      const { error } = await supabase.from('schedule_proposals').insert({
+        issue_id: issue.id, household_id: issue.household_id,
+        proposed_by: profile.id, proposed_date: new Date(date).toISOString(), note: note.trim(),
+      })
+      if (error) throw error
+      setShowForm(false); setDate(''); setNote('')
+      await reload()
+    } catch (err) { setError(err.message || String(err)) } finally { setBusy(false) }
+  }
+
+  async function decide(status) {
+    setBusy(true); setError('')
+    const { error } = await supabase.from('schedule_proposals').update({
+      status, decided_by: profile.id, decided_at: new Date().toISOString(),
+    }).eq('id', pending.id)
+    setBusy(false)
+    if (error) return setError(error.message)
+    if (status === 'declined') setShowForm(true)
+    await reload()
+  }
+
+  return (
+    <>
+      {accepted && !pending && (
+        <div className="ok-box" style={{ marginBottom: 12 }}>
+          <b>Repair confirmed for {fmt(accepted.proposed_date)}</b> — proposed by {who(accepted.proposed_by)}, accepted by {who(accepted.decided_by)}.
+        </div>
+      )}
+
+      {pending && (
+        <div className="sched-pending">
+          <div className="sp-main">
+            <IClock size={15} />
+            <div>
+              <div className="sp-date">{fmt(pending.proposed_date)}</div>
+              <div className="muted">
+                Proposed by {who(pending.proposed_by)}{pending.proposed_by === profile.id ? ' (you)' : ''}
+                {pending.note && <> — “{pending.note}”</>}
+              </div>
+            </div>
+          </div>
+          {canWrite && pending.proposed_by !== profile.id && !showForm && (
+            <div className="sp-actions">
+              <button className="btn btn-sm btn-accent" disabled={busy} onClick={() => decide('accepted')}><ICheck size={14} /> Accept this date</button>
+              <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => decide('declined')}>Doesn't work — suggest another</button>
+            </div>
+          )}
+          {canWrite && pending.proposed_by === profile.id && (
+            <div className="muted" style={{ marginTop: 8 }}>Waiting for the other party to accept or suggest a different time.</div>
+          )}
+        </div>
+      )}
+
+      {!pending && !accepted && !showForm && (
+        <div className="muted">No repair date proposed yet.</div>
+      )}
+
+      {canWrite && !showForm && (
+        <button className="btn btn-sm btn-ghost" style={{ marginTop: 10 }} onClick={() => setShowForm(true)}>
+          <IClock size={14} /> {pending ? 'Suggest a different date' : accepted ? 'Propose a new date' : 'Propose repair date'}
+        </button>
+      )}
+
+      {canWrite && showForm && (
+        <form onSubmit={propose} style={{ marginTop: 12, borderTop: '1px solid var(--line)', paddingTop: 14 }}>
+          <div className="field">
+            <label>Proposed date & time</label>
+            <input type="datetime-local" value={date} onChange={e => setDate(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label>Note for the other party (optional)</label>
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Crew available all morning; needs garage access" />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="btn btn-sm btn-accent" disabled={busy || !date}>{busy ? 'Sending…' : 'Send proposal'}</button>
+          </div>
+        </form>
+      )}
+
+      {proposals.length > 0 && (
+        <div className="sched-history">
+          {proposals.map(p => (
+            <div key={p.id} className="sh-row">
+              <span className={`sh-status ${p.status}`}>{p.status}</span>
+              <span>{fmt(p.proposed_date)} · {who(p.proposed_by)}{p.note ? ` — “${p.note}”` : ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   )
 }
