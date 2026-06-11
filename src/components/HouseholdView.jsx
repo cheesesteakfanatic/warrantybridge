@@ -15,26 +15,31 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
     const [{ data: h }, { data: m }, { data: inv }, { data: iss }] = await Promise.all([
       supabase.from('households').select('*').eq('id', householdId).maybeSingle(),
       supabase.from('household_members').select('user_id, member_role, joined_at, profiles(id, full_name, role, company)').eq('household_id', householdId),
-      supabase.from('invites').select('*').eq('household_id', householdId).is('claimed_by', null),
+      supabase.from('invites').select('*').eq('household_id', householdId).order('created_at'),
       supabase.from('issues').select('*').eq('household_id', householdId).order('created_at', { ascending: false }),
     ])
-    setHousehold(h); setMembers(m || []); setInvites(inv || []); setIssues(iss || [])
+    setHousehold(h); setMembers(m || []); setIssues(iss || [])
+    setInvites(await ensureInvites(inv || []))
+  }
+
+  // every home keeps one standing, reusable invite code per role
+  async function ensureInvites(current) {
+    const missing = ['buyer', 'builder'].filter(r => !current.some(i => i.invited_role === r))
+    if (missing.length === 0) return current
+    await supabase.from('invites').insert(
+      missing.map(r => ({ household_id: householdId, invited_role: r, created_by: profile.id })))
+    const { data } = await supabase.from('invites').select('*').eq('household_id', householdId).order('created_at')
+    return data || []
   }
 
   useEffect(() => { load() }, [householdId])
 
-  async function createInvite(role) {
-    const { error } = await supabase.from('invites').insert({
-      household_id: householdId, invited_role: role, created_by: profile.id,
-    })
-    if (!error) load()
-  }
+  const inviteFor = (role) => invites.find(i => i.invited_role === role)
 
-  function copyInvite(inv) {
-    const link = `${window.location.origin}/?join=${inv.code}`
-    navigator.clipboard.writeText(`You're invited to "${household.name}" on WarrantyBridge.\nJoin here: ${link}\nOr enter code: ${inv.code}`)
+  function copyLink(inv) {
+    navigator.clipboard.writeText(`${window.location.origin}/?join=${inv.code}`)
     setCopied(inv.id)
-    setTimeout(() => setCopied(''), 2000)
+    setTimeout(() => setCopied(''), 2200)
   }
 
   if (!household || issues === null) return <div className="spinner" />
@@ -54,11 +59,29 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
           <h2>{household.name}</h2>
           <div className="muted">{household.address}</div>
         </div>
-        <button className="btn btn-teal" onClick={() => setShowNew(true)}>+ Report issue</button>
+        <button className="btn btn-teal" onClick={() => setShowNew(true)}>
+          {profile.role === 'builder' ? '+ Log issue' : '+ Report issue'}
+        </button>
       </div>
 
       <div className="two-col">
         <div>
+          {profile.role === 'builder' && issues.length > 0 && (
+            <div className="stats-strip">
+              <div className="stat amber">
+                <span className="n">{issues.filter(i => i.status === 'open').length}</span>
+                <span className="l">Awaiting review</span>
+              </div>
+              <div className="stat blue">
+                <span className="n">{issues.filter(i => ['acknowledged', 'scheduled', 'dispatched', 'in_progress'].includes(i.status)).length}</span>
+                <span className="l">In repair</span>
+              </div>
+              <div className="stat green">
+                <span className="n">{issues.filter(i => ['resolved', 'closed'].includes(i.status)).length}</span>
+                <span className="l">Resolved</span>
+              </div>
+            </div>
+          )}
           <div className="filters">
             {[['active', 'Active'], ['done', 'Resolved & closed'], ['all', 'All']].map(([v, l]) => (
               <button key={v} className={`chip ${filter === v ? 'active' : ''}`} onClick={() => setFilter(v)}>{l}</button>
@@ -107,29 +130,23 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
           </div>
 
           <div className="card side-card">
-            <h4>Invite someone</h4>
+            <h4>Share this home</h4>
             <p className="muted" style={{ marginTop: 0 }}>
-              Share this home with the other party. They'll create an account and see the full record.
+              Send a link to the other party — it opens the app and joins them to this home after they create an account.
             </p>
-            {invites.map(inv => (
-              <div key={inv.id}>
-                <div className="muted" style={{ marginTop: 10 }}>Invite for a <b>{inv.invited_role}</b>:</div>
-                <div className="code-pill">
-                  <span>{inv.code}</span>
-                  <button className="btn btn-sm btn-ghost" onClick={() => copyInvite(inv)}>
-                    {copied === inv.id ? 'Copied!' : 'Copy link'}
-                  </button>
-                </div>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <button className="btn btn-sm btn-primary" onClick={() => createInvite(inviteRoleSuggestion)}>
-                + Invite a {inviteRoleSuggestion}
-              </button>
-              <button className="btn btn-sm btn-ghost" onClick={() => createInvite(profile.role)}>
-                + Invite another {profile.role}
-              </button>
-            </div>
+            <ShareBlock
+              primary
+              label={profile.role === 'builder' ? '🏠 Homebuyer invite' : '🔨 Builder invite'}
+              inv={inviteFor(inviteRoleSuggestion)}
+              copied={copied}
+              onCopy={copyLink}
+            />
+            <ShareBlock
+              label={profile.role === 'builder' ? '🔨 Another builder' : '🏠 Another buyer'}
+              inv={inviteFor(profile.role)}
+              copied={copied}
+              onCopy={copyLink}
+            />
           </div>
         </div>
       </div>
@@ -143,6 +160,19 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
         />
       )}
     </>
+  )
+}
+
+function ShareBlock({ label, inv, copied, onCopy, primary }) {
+  if (!inv) return null
+  return (
+    <div className={`share-block ${primary ? 'primary' : ''}`}>
+      <div className="sb-label">{label}</div>
+      <button className={`btn btn-sm ${primary ? 'btn-teal' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={() => onCopy(inv)}>
+        {copied === inv.id ? '✓ Link copied!' : 'Copy invite link'}
+      </button>
+      <div className="sb-code">or share code: <b>{inv.code}</b></div>
+    </div>
   )
 }
 
