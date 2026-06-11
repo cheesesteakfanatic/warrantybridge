@@ -57,8 +57,12 @@ export default function Households({ profile, openHousehold }) {
     <>
       <div className="page-head">
         <div>
-          <h2>Your homes</h2>
-          <div className="muted">Each home connects its {profile.role === 'builder' ? 'buyers' : 'builder'} and keeps a full warranty record.</div>
+          <h2>{profile.role === 'builder' ? 'Homes under warranty' : 'Your homes'}</h2>
+          <div className="muted">
+            {profile.role === 'builder'
+              ? 'Manage warranty requests across the homes you build and service.'
+              : 'Track warranty issues and stay in sync with your builder.'}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-ghost" onClick={() => { setShowJoin(true); setError('') }}>Join with code</button>
