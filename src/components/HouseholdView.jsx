@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase, uploadImage } from '../lib/supabase'
 import { CATEGORIES, PRIORITIES, statusMeta, timeAgo, initials, issueMetrics, fmtDuration, avg } from '../lib/helpers'
-import { IArrowLeft, IPencil, IPlus, ICamera, IImage, ILink, ICheck, IX, IClock } from './Icons'
+import { IArrowLeft, IPencil, IPlus, ICamera, IImage, ILink, ICheck, IX, IClock, ITrash } from './Icons'
 
 export default function HouseholdView({ householdId, profile, back, openIssue }) {
   const [household, setHousehold] = useState(null)
@@ -65,6 +65,16 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
       .eq('household_id', householdId).eq('user_id', m.user_id)
     if (error) setError(error.message)
     else load()
+  }
+
+  async function deleteHome() {
+    const typed = window.prompt(
+      `This permanently deletes "${household.name}" — every issue, photo, message, and member access — for everyone. This cannot be undone.\n\nType the home name to confirm:`)
+    if (typed === null) return
+    if (typed.trim() !== household.name) { setError('Name did not match — home was not deleted.'); return }
+    const { error } = await supabase.from('households').delete().eq('id', householdId)
+    if (error) setError(error.message)
+    else back()
   }
 
   async function leaveHome() {
@@ -227,6 +237,19 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
           )}
         </div>
       </div>
+
+      {isManager && (
+        <div className="two-col" style={{ marginTop: 4 }}>
+          <div />
+          <div className="card side-card danger-card">
+            <h4><ITrash size={12} /> Danger zone</h4>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Permanently delete this home and its entire record for all members.
+            </p>
+            <button className="btn btn-ghost btn-sm danger-btn" onClick={deleteHome}>Delete this home…</button>
+          </div>
+        </div>
+      )}
 
       {showNew && (
         <NewIssueModal
