@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Logo from './Logo'
 import { ICheck, IHome, IWrench } from './Icons'
@@ -6,6 +6,20 @@ import { ICheck, IHome, IWrench } from './Icons'
 export default function Auth({ pendingInvite }) {
   const [mode, setMode] = useState(pendingInvite ? 'signup' : 'signin')
   const [role, setRole] = useState('buyer')
+  const [inviteInfo, setInviteInfo] = useState(null)
+
+  useEffect(() => {
+    if (!pendingInvite) return
+    supabase.rpc('invite_peek', { p_code: pendingInvite }).then(({ data }) => {
+      if (data) {
+        setInviteInfo(data)
+        if (data.invited_role === 'viewer') setRole('viewer')
+        else if (data.invited_role) setRole(data.invited_role)
+      }
+    })
+  }, [pendingInvite])
+
+  const isViewerInvite = inviteInfo?.invited_role === 'viewer'
   const [fullName, setFullName] = useState('')
   const [company, setCompany] = useState('')
   const [email, setEmail] = useState('')
@@ -68,8 +82,11 @@ export default function Auth({ pendingInvite }) {
         <div className="card auth-card">
           {pendingInvite && (
             <div className="invite-banner">
-              You've been invited to join a home (code <b>{pendingInvite}</b>).
-              Create an account or sign in to accept.
+              {isViewerInvite
+                ? <>You've been invited to follow <b>{inviteInfo.home}</b> as a view-only guest. Create an account or sign in to accept.</>
+                : inviteInfo?.home
+                  ? <>You've been invited to join <b>{inviteInfo.home}</b>{inviteInfo.invited_role ? <> as a <b>{inviteInfo.invited_role}</b></> : null}. Create an account or sign in to accept.</>
+                  : <>You've been invited to join a home (code <b>{pendingInvite}</b>). Create an account or sign in to accept.</>}
             </div>
           )}
           {mode !== 'forgot' && (
@@ -86,7 +103,7 @@ export default function Auth({ pendingInvite }) {
           <form onSubmit={submit}>
             {mode === 'signup' && (
               <>
-                <div className="role-pick">
+                {!isViewerInvite && <div className="role-pick">
                   <button type="button" className={role === 'buyer' ? 'active' : ''} onClick={() => setRole('buyer')}>
                     <span className="rp-ic"><IHome size={17} /></span>
                     <span className="rp-title">Homebuyer</span>
@@ -97,7 +114,7 @@ export default function Auth({ pendingInvite }) {
                     <span className="rp-title">Builder</span>
                     <span className="rp-sub">I built or service the home</span>
                   </button>
-                </div>
+                </div>}
                 <div className="field">
                   <label>Full name</label>
                   <input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Jane Smith" required />
