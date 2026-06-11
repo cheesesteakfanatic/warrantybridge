@@ -48,3 +48,37 @@ export function timeAgo(iso) {
 export function initials(name) {
   return (name || '?').split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
 }
+
+export function fmtDuration(ms) {
+  if (ms == null) return null
+  const m = Math.round(ms / 60000)
+  if (m < 1) return '<1m'
+  if (m < 60) return `${m}m`
+  const h = m / 60
+  if (h < 48) return `${Math.round(h)}h`
+  return `${Math.round(h / 24)}d`
+}
+
+const PROGRESS = ['acknowledged', 'scheduled', 'dispatched', 'in_progress', 'resolved', 'closed']
+
+// Response/acknowledge/resolution durations for one issue, from its event log + messages.
+export function issueMetrics(issue, events, messages) {
+  const created = new Date(issue.created_at).getTime()
+  const evs = events.filter(e => e.issue_id === issue.id)
+  const msgs = messages.filter(m => m.issue_id === issue.id)
+  const firstOtherMsg = msgs.find(m => m.sender_id !== issue.created_by)
+  const firstStatus = evs.find(e => e.event_type === 'status_change' && e.actor_id !== issue.created_by)
+  const candidates = [firstOtherMsg?.created_at, firstStatus?.created_at]
+    .filter(Boolean).map(d => new Date(d).getTime())
+  const response = candidates.length ? Math.min(...candidates) - created : null
+  const ackEv = evs.find(e => e.event_type === 'status_change' && PROGRESS.includes(e.new_status))
+  const ack = ackEv ? new Date(ackEv.created_at).getTime() - created : null
+  const resEv = evs.find(e => e.new_status === 'resolved') || evs.find(e => e.new_status === 'closed')
+  const resolve = resEv ? new Date(resEv.created_at).getTime() - created : null
+  return { response, ack, resolve }
+}
+
+export function avg(values) {
+  const v = values.filter(x => x != null)
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
+}
