@@ -4,6 +4,9 @@ import Auth from './components/Auth'
 import Households from './components/Households'
 import HouseholdView from './components/HouseholdView'
 import IssueDetail from './components/IssueDetail'
+import Settings from './components/Settings'
+import ResetPassword from './components/ResetPassword'
+import NotificationsBell from './components/NotificationsBell'
 import Logo from './components/Logo'
 import { initials } from './lib/helpers'
 
@@ -18,18 +21,19 @@ export default function App() {
   const [view, setView] = useState({ name: 'households' })
   const [pendingInvite, setPendingInvite] = useState(getInviteFromUrl())
   const [inviteMsg, setInviteMsg] = useState('')
+  const [recovery, setRecovery] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
-      if (_e === 'SIGNED_IN' || _e === 'SIGNED_OUT') setView({ name: 'households' })
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') setView({ name: 'households' })
     })
     return () => sub.subscription.unsubscribe()
   }, [])
 
   const loadProfile = useCallback(async (uid) => {
-    // the profile row is created by a DB trigger; retry briefly on first signup
     for (let i = 0; i < 6; i++) {
       const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle()
       if (data) { setProfile(data); return }
@@ -42,7 +46,6 @@ export default function App() {
     else setProfile(null)
   }, [session, loadProfile])
 
-  // claim invite code after login
   useEffect(() => {
     if (!session?.user || !pendingInvite) return
     const code = pendingInvite
@@ -59,20 +62,26 @@ export default function App() {
 
   if (session === undefined) return <div className="spinner" />
   if (!session) return <Auth pendingInvite={pendingInvite} />
+  if (recovery) return <ResetPassword done={() => setRecovery(false)} />
 
   return (
     <div className="shell">
       <header className="topbar">
-        <div style={{ cursor: 'pointer' }} onClick={() => setView({ name: 'households' })}>
+        <button className="brand-btn" onClick={() => setView({ name: 'households' })}>
           <Logo onDark />
-        </div>
+        </button>
         <div className="topbar-right">
-          <div className="who">
-            <div className="nm">{profile?.full_name || session.user.email}</div>
-            <div className="rl">{profile?.role}{profile?.company ? ` · ${profile.company}` : ''}</div>
-          </div>
-          <div className="avatar teal">{initials(profile?.full_name || session.user.email)}</div>
-          <button className="btn-signout" onClick={() => supabase.auth.signOut()}>Sign out</button>
+          <NotificationsBell
+            profile={profile}
+            openIssue={(issueId, householdId) => setView({ name: 'issue', id: issueId, householdId })}
+          />
+          <button className="who-btn" onClick={() => setView({ name: 'settings' })} title="Your settings">
+            <span className="who">
+              <span className="nm">{profile?.full_name || session.user.email}</span>
+              <span className="rl">{profile?.role}{profile?.company ? ` · ${profile.company}` : ''}</span>
+            </span>
+            <span className={`avatar ${profile?.role === 'builder' ? 'builder' : ''}`}>{initials(profile?.full_name || session.user.email)}</span>
+          </button>
         </div>
       </header>
 
@@ -95,6 +104,14 @@ export default function App() {
             issueId={view.id}
             profile={profile}
             back={() => setView({ name: 'household', id: view.householdId })}
+          />
+        )}
+        {profile && view.name === 'settings' && (
+          <Settings
+            profile={profile}
+            email={session.user.email}
+            back={() => setView({ name: 'households' })}
+            refresh={() => loadProfile(profile.id)}
           />
         )}
       </main>
