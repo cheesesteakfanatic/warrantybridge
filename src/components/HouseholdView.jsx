@@ -24,7 +24,9 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
       supabase.from('issues').select('*').eq('household_id', householdId).order('created_at', { ascending: false }),
     ])
     setHousehold(h); setMembers(m || []); setIssues(iss || [])
-    setInvites(await ensureInvites(inv || []))
+    const mine = (m || []).find(x => x.user_id === profile.id)?.member_role
+    if (mine === 'buyer' || mine === 'builder') setInvites(await ensureInvites(inv || []))
+    else setInvites(inv || [])
     const ids = (iss || []).map(i => i.id)
     if (ids.length) {
       const [{ data: ev }, { data: mm }] = await Promise.all([
@@ -36,7 +38,7 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
   }
 
   async function ensureInvites(current) {
-    const missing = ['buyer', 'builder'].filter(r => !current.some(i => i.invited_role === r))
+    const missing = ['buyer', 'builder', 'viewer'].filter(r => !current.some(i => i.invited_role === r))
     if (missing.length === 0) return current
     await supabase.from('invites').insert(
       missing.map(r => ({ household_id: householdId, invited_role: r, created_by: profile.id })))
@@ -47,6 +49,8 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
   useEffect(() => { load() }, [householdId])
 
   const isManager = household?.created_by === profile.id
+  const myRole = members.find(m => m.user_id === profile.id)?.member_role
+  const canWrite = myRole === 'buyer' || myRole === 'builder'
   const inviteFor = (role) => invites.find(i => i.invited_role === role)
 
   function copyLink(inv) {
@@ -102,9 +106,13 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
           </h2>
           <div className="muted">{household.address}</div>
         </div>
-        <button className="btn btn-accent" onClick={() => setShowNew(true)}>
-          <IPlus size={15} /> {profile.role === 'builder' ? 'Log issue' : 'Report issue'}
-        </button>
+        {canWrite ? (
+          <button className="btn btn-accent" onClick={() => setShowNew(true)}>
+            <IPlus size={15} /> {profile.role === 'builder' ? 'Log issue' : 'Report issue'}
+          </button>
+        ) : (
+          <span className="badge viewer-badge">View-only access</span>
+        )}
       </div>
 
       {error && <div className="error-box">{error}</div>}
@@ -171,13 +179,13 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
             <h4>Members</h4>
             {members.map(m => (
               <div key={m.user_id} className="member-row">
-                <div className={`avatar ${m.member_role === 'builder' ? 'builder' : ''}`}>{initials(m.profiles?.full_name)}</div>
+                <div className={`avatar ${m.member_role === 'builder' ? 'builder' : ''} ${m.member_role === 'viewer' ? 'viewer' : ''}`}>{initials(m.profiles?.full_name)}</div>
                 <div className="mr-info">
                   <div className="mr-name">
                     {m.profiles?.full_name}{m.user_id === profile.id ? ' (you)' : ''}
                     {m.user_id === household.created_by && <span className="mgr-chip">Manager</span>}
                   </div>
-                  <div className="mr-sub">{m.member_role}{m.profiles?.company ? ` · ${m.profiles.company}` : ''}</div>
+                  <div className="mr-sub">{m.member_role === 'viewer' ? 'viewer (read-only)' : m.member_role}{m.profiles?.company ? ` · ${m.profiles.company}` : ''}</div>
                 </div>
                 {isManager && m.user_id !== profile.id && (
                   <button className="member-remove" title="Remove from home" onClick={() => removeMember(m)}><IX size={14} /></button>
@@ -189,25 +197,34 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
             )}
           </div>
 
-          <div className="card side-card">
-            <h4>Share this home</h4>
-            <p className="muted" style={{ marginTop: 0 }}>
-              Send a link to the other party — it opens the app and joins them to this home after they create an account.
-            </p>
-            <ShareBlock
-              primary
-              label={profile.role === 'builder' ? 'Homebuyer invite' : 'Builder invite'}
-              inv={inviteFor(inviteRoleSuggestion)}
-              copied={copied}
-              onCopy={copyLink}
-            />
-            <ShareBlock
-              label={profile.role === 'builder' ? 'Another builder' : 'Another buyer'}
-              inv={inviteFor(profile.role)}
-              copied={copied}
-              onCopy={copyLink}
-            />
-          </div>
+          {canWrite && (
+            <div className="card side-card">
+              <h4>Share this home</h4>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Send a link to the other party — it opens the app and joins them to this home after they create an account.
+              </p>
+              <ShareBlock
+                primary
+                label={profile.role === 'builder' ? 'Homebuyer invite' : 'Builder invite'}
+                inv={inviteFor(inviteRoleSuggestion)}
+                copied={copied}
+                onCopy={copyLink}
+              />
+              <ShareBlock
+                label={profile.role === 'builder' ? 'Another builder' : 'Another buyer'}
+                inv={inviteFor(profile.role)}
+                copied={copied}
+                onCopy={copyLink}
+              />
+              <ShareBlock
+                label="View-only guest"
+                hint="For a lawyer, agent, or inspector — they can follow every issue and message but cannot change anything."
+                inv={inviteFor('viewer')}
+                copied={copied}
+                onCopy={copyLink}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -230,11 +247,12 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
   )
 }
 
-function ShareBlock({ label, inv, copied, onCopy, primary }) {
+function ShareBlock({ label, inv, copied, onCopy, primary, hint }) {
   if (!inv) return null
   return (
     <div className={`share-block ${primary ? 'primary' : ''}`}>
       <div className="sb-label">{label}</div>
+      {hint && <p className="muted" style={{ margin: '0 0 9px', fontSize: 12 }}>{hint}</p>}
       <button className={`btn btn-sm ${primary ? 'btn-accent' : 'btn-ghost'}`} style={{ width: '100%' }} onClick={() => onCopy(inv)}>
         {copied === inv.id ? <><ICheck size={14} /> Link copied</> : <><ILink size={14} /> Copy invite link</>}
       </button>
