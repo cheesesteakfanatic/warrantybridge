@@ -11,6 +11,10 @@ import Logo from './components/Logo'
 import { initials } from './lib/helpers'
 
 function getInviteFromUrl() {
+  // readable links: /join/{role}/{home-slug}/{code}
+  const m = window.location.pathname.match(/^\/join\/[^/]+\/[^/]+\/([a-z0-9]+)\/?$/i)
+  if (m) return m[1].toLowerCase()
+  // legacy links: /?join={code}
   const p = new URLSearchParams(window.location.search)
   return p.get('join') || ''
 }
@@ -50,7 +54,7 @@ export default function App() {
     if (!session?.user || !pendingInvite) return
     const code = pendingInvite
     setPendingInvite('')
-    window.history.replaceState({}, '', window.location.pathname)
+    window.history.replaceState({}, '', '/')
     supabase.rpc('claim_invite', { p_code: code }).then(({ data, error }) => {
       if (error) setInviteMsg(error.message.replace('claim_invite: ', ''))
       else {
