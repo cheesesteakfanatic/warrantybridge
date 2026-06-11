@@ -66,7 +66,9 @@ export default function Households({ profile, openHousehold }) {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-ghost" onClick={() => { setShowJoin(true); setError('') }}>Join with code</button>
-          <button className="btn btn-accent" onClick={() => { setShowCreate(true); setError('') }}>+ New home</button>
+          {profile.role !== 'viewer' && (
+            <button className="btn btn-accent" onClick={() => { setShowCreate(true); setError('') }}>+ New home</button>
+          )}
         </div>
       </div>
 
