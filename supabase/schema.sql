@@ -120,12 +120,14 @@ begin
   return hid;
 end; $fn$;
 
+-- Invite codes are reusable: one standing code per role per household.
+-- claimed_by/claimed_at record the most recent claim for audit purposes.
 create or replace function public.claim_invite(p_code text)
 returns uuid language plpgsql security definer set search_path = public as $fn$
 declare inv record;
 begin
-  select * into inv from invites where code = lower(trim(p_code)) and claimed_by is null;
-  if not found then raise exception 'Invalid or already-used invite code'; end if;
+  select * into inv from invites where code = lower(trim(p_code));
+  if not found then raise exception 'Invalid invite code'; end if;
   if exists(select 1 from household_members where household_id = inv.household_id and user_id = auth.uid()) then
     raise exception 'You are already a member of this household';
   end if;
