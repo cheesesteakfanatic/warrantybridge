@@ -54,7 +54,8 @@ export default function HouseholdView({ householdId, profile, back, openIssue })
   const inviteFor = (role) => invites.find(i => i.invited_role === role)
 
   function copyLink(inv) {
-    navigator.clipboard.writeText(`${window.location.origin}/?join=${inv.code}`)
+    const slug = (household?.name || 'home').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'home'
+    navigator.clipboard.writeText(`${window.location.origin}/join/${inv.invited_role}/${slug}/${inv.code}`)
     setCopied(inv.id)
     setTimeout(() => setCopied(''), 2200)
   }
