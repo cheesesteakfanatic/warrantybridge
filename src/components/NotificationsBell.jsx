@@ -12,7 +12,7 @@ export default function NotificationsBell({ profile, openIssue }) {
     if (!profile) return
     const { data } = await supabase.from('notifications')
       .select('*').eq('user_id', profile.id)
-      .order('created_at', { ascending: false }).limit(20)
+      .order('created_at', { ascending: false }).limit(50)
     setItems(data || [])
   }, [profile?.id])
 
