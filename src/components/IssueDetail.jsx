@@ -160,18 +160,34 @@ export default function IssueDetail({ issueId, profile, back }) {
             ))}
           </div>
         )}
-        <div className="status-select-row">
-          <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate-600)' }}>Update status:</label>
-          <select value={issue.status} onChange={e => changeStatus(e.target.value)} disabled={statusBusy}>
-            {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <input
-            style={{ flex: 1, minWidth: 180, border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px' }}
-            placeholder="Optional note with your next status change…"
-            value={statusNote}
-            onChange={e => setStatusNote(e.target.value)}
-          />
-        </div>
+        {profile.role === 'builder' ? (
+          <div className="status-select-row">
+            <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate-600)' }}>Update repair status:</label>
+            <select value={issue.status} onChange={e => changeStatus(e.target.value)} disabled={statusBusy}>
+              {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <input
+              style={{ flex: 1, minWidth: 180, border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px' }}
+              placeholder="Optional note with your next status change…"
+              value={statusNote}
+              onChange={e => setStatusNote(e.target.value)}
+            />
+          </div>
+        ) : (
+          <div className="status-select-row">
+            {issue.status === 'resolved' ? (
+              <>
+                <span style={{ fontSize: 13.5, fontWeight: 600 }}>Your builder marked this resolved. Does everything look good?</span>
+                <button className="btn btn-sm btn-teal" disabled={statusBusy} onClick={() => changeStatus('closed')}>✓ Confirm & close</button>
+                <button className="btn btn-sm btn-ghost" disabled={statusBusy} onClick={() => changeStatus('open')}>Not fixed — reopen</button>
+              </>
+            ) : issue.status === 'closed' ? (
+              <button className="btn btn-sm btn-ghost" disabled={statusBusy} onClick={() => changeStatus('open')}>Reopen this issue</button>
+            ) : (
+              <span className="muted">Your builder updates the repair status — every change is logged in the timeline below.</span>
+            )}
+          </div>
+        )}
         <div className="muted" style={{ marginTop: 8 }}>{sm.desc}.</div>
       </div>
 
