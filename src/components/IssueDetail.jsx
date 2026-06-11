@@ -17,6 +17,7 @@ export default function IssueDetail({ issueId, profile, back }) {
   const [statusBusy, setStatusBusy] = useState(false)
   const [statusNote, setStatusNote] = useState('')
   const [showEdit, setShowEdit] = useState(false)
+  const [canWrite, setCanWrite] = useState(true)
   const [error, setError] = useState('')
   const threadRef = useRef(null)
   const fileRef = useRef(null)
@@ -30,6 +31,14 @@ export default function IssueDetail({ issueId, profile, back }) {
       supabase.from('messages').select('*').eq('issue_id', issueId).order('created_at'),
     ])
     setIssue(iss); setPhotos(ph || []); setEvents(ev || []); setMessages(msgs || [])
+
+    let writer = true
+    if (iss) {
+      const { data: mem } = await supabase.from('household_members')
+        .select('member_role').eq('household_id', iss.household_id).eq('user_id', profile.id).maybeSingle()
+      writer = mem?.member_role === 'buyer' || mem?.member_role === 'builder'
+      setCanWrite(writer)
+    }
 
     const ids = (msgs || []).map(m => m.id)
     if (ids.length) {
@@ -49,7 +58,8 @@ export default function IssueDetail({ issueId, profile, back }) {
       setProfiles(map)
     }
 
-    // mark unread messages from others as read
+    // mark unread messages from others as read (writers only — viewers don't produce read receipts)
+    if (!writer) return
     const unread = (msgs || []).filter(m =>
       m.sender_id !== profile.id &&
       !(reads || []).some(r => r.message_id === m.id && r.user_id === profile.id))
@@ -141,7 +151,7 @@ export default function IssueDetail({ issueId, profile, back }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <h2>{issue.title}</h2>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {issue.created_by === profile.id && !['closed'].includes(issue.status) && (
+            {canWrite && issue.created_by === profile.id && !['closed'].includes(issue.status) && (
               <button className="btn btn-sm btn-ghost" onClick={() => setShowEdit(true)}><IPencil size={13} /> Edit</button>
             )}
             <span className="badge" style={{ color: sm.color, background: sm.bg, fontSize: 13, padding: '6px 14px' }}>
@@ -168,7 +178,11 @@ export default function IssueDetail({ issueId, profile, back }) {
             ))}
           </div>
         )}
-        {profile.role === 'builder' ? (
+        {!canWrite ? (
+          <div className="status-select-row">
+            <span className="muted">View-only access — you can follow this issue, its timeline, and messages, but cannot make changes.</span>
+          </div>
+        ) : profile.role === 'builder' ? (
           <div className="status-select-row">
             <label style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate-600)' }}>Update repair status:</label>
             <select value={issue.status} onChange={e => changeStatus(e.target.value)} disabled={statusBusy}>
@@ -288,8 +302,12 @@ export default function IssueDetail({ issueId, profile, back }) {
             <button onClick={() => { setAttach(null); setAttachPreview(''); if (fileRef.current) fileRef.current.value = '' }}>Remove</button>
           </div>
         )}
-        {/* composer */}
-        <form className="composer" onSubmit={send}>
+        {!canWrite && (
+          <div className="muted" style={{ padding: '12px 20px', borderTop: '1px solid var(--line)' }}>
+            You're following this issue as a view-only guest.
+          </div>
+        )}
+        {canWrite && <form className="composer" onSubmit={send}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickAttach} />
           <input ref={camMsgRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pickAttach} />
           <button type="button" className="icon-btn" title="Take a photo" onClick={() => camMsgRef.current?.click()}><ICamera size={17} /></button>
@@ -303,7 +321,7 @@ export default function IssueDetail({ issueId, profile, back }) {
           <button className="btn btn-teal" disabled={sending || (!text.trim() && !attach)}>
             {sending ? 'Sending…' : 'Send'}
           </button>
-        </form>
+        </form>}
       </div>
     </>
   )
