@@ -353,6 +353,13 @@ h1, h2, h3 { font-weight: 650; letter-spacing: -0.022em; }
   text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
 }
 
+.viewer-badge { background: #f4f4f5; color: var(--muted); border: 1px solid var(--line-strong); padding: 6px 14px; }
+.avatar.viewer { background: #a1a1aa; }
+.danger-card h4 { color: var(--danger); }
+.danger-btn { color: var(--danger); }
+.danger-solid { background: var(--danger); color: #fff; }
+.danger-solid:hover { background: #b91c1c; }
+
 /* ---------- settings ---------- */
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 .toggle-row { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; cursor: pointer; margin-top: 4px; }
