@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase, uploadImage, publicUrl } from '../lib/supabase'
-import { STATUSES, statusMeta, fmtDateTime, initials } from '../lib/helpers'
+import { STATUSES, CATEGORIES, PRIORITIES, statusMeta, fmtDateTime, initials } from '../lib/helpers'
 
 export default function IssueDetail({ issueId, profile, back }) {
   const [issue, setIssue] = useState(null)
@@ -15,6 +15,7 @@ export default function IssueDetail({ issueId, profile, back }) {
   const [sending, setSending] = useState(false)
   const [statusBusy, setStatusBusy] = useState(false)
   const [statusNote, setStatusNote] = useState('')
+  const [showEdit, setShowEdit] = useState(false)
   const [error, setError] = useState('')
   const threadRef = useRef(null)
   const fileRef = useRef(null)
@@ -137,9 +138,14 @@ export default function IssueDetail({ issueId, profile, back }) {
       <div className="card detail-head">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <h2>{issue.title}</h2>
-          <span className="badge" style={{ color: sm.color, background: sm.bg, fontSize: 13, padding: '6px 14px' }}>
-            <span className="dot" />{sm.label}
-          </span>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {issue.created_by === profile.id && !['closed'].includes(issue.status) && (
+              <button className="btn btn-sm btn-ghost" onClick={() => setShowEdit(true)}>✎ Edit</button>
+            )}
+            <span className="badge" style={{ color: sm.color, background: sm.bg, fontSize: 13, padding: '6px 14px' }}>
+              <span className="dot" />{sm.label}
+            </span>
+          </div>
         </div>
         <div className="detail-meta">
           <span>Reported by <b>{reporter?.full_name || '—'}</b></span>
@@ -192,6 +198,15 @@ export default function IssueDetail({ issueId, profile, back }) {
       </div>
 
       {error && <div className="error-box" style={{ marginTop: 14 }}>{error}</div>}
+
+      {showEdit && (
+        <EditIssueModal
+          issue={issue}
+          profile={profile}
+          close={() => setShowEdit(false)}
+          done={async () => { setShowEdit(false); await load() }}
+        />
+      )}
 
       <div className="section-title">Activity & repair timeline</div>
       <div className="card" style={{ padding: '14px 22px' }}>
@@ -271,6 +286,7 @@ export default function IssueDetail({ issueId, profile, back }) {
             <button onClick={() => { setAttach(null); setAttachPreview(''); if (fileRef.current) fileRef.current.value = '' }}>Remove</button>
           </div>
         )}
+        {/* composer */}
         <form className="composer" onSubmit={send}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickAttach} />
           <button type="button" className="icon-btn" title="Attach photo" onClick={() => fileRef.current?.click()}>📷</button>
@@ -286,5 +302,102 @@ export default function IssueDetail({ issueId, profile, back }) {
         </form>
       </div>
     </>
+  )
+}
+
+function EditIssueModal({ issue, profile, close, done }) {
+  const [title, setTitle] = useState(issue.title)
+  const [description, setDescription] = useState(issue.description || '')
+  const [category, setCategory] = useState(issue.category)
+  const [priority, setPriority] = useState(issue.priority)
+  const [files, setFiles] = useState([])
+  const [previews, setPreviews] = useState([])
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function pickFiles(e) {
+    const list = Array.from(e.target.files || []).slice(0, 6)
+    setFiles(list)
+    setPreviews(list.map(f => URL.createObjectURL(f)))
+  }
+
+  async function submit(e) {
+    e.preventDefault(); setBusy(true); setError('')
+    try {
+      const changed = title.trim() !== issue.title || description.trim() !== (issue.description || '') ||
+        category !== issue.category || priority !== issue.priority
+      const { error: e1 } = await supabase.from('issues').update({
+        title: title.trim(),
+        description: description.trim(),
+        category, priority,
+      }).eq('id', issue.id)
+      if (e1) throw e1
+      for (const f of files) {
+        const path = await uploadImage(f)
+        const { error: e2 } = await supabase.from('issue_photos').insert({
+          issue_id: issue.id, path, uploaded_by: profile.id,
+        })
+        if (e2) throw e2
+      }
+      if (changed || files.length > 0) {
+        await supabase.from('issue_events').insert({
+          issue_id: issue.id, actor_id: profile.id, event_type: 'note',
+          note: files.length > 0 && !changed
+            ? `added ${files.length} photo${files.length > 1 ? 's' : ''}`
+            : 'edited the issue details' + (files.length > 0 ? ` and added ${files.length} photo${files.length > 1 ? 's' : ''}` : ''),
+        })
+      }
+      done()
+    } catch (err) {
+      setError(err.message || String(err))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-back" onClick={close}>
+      <div className="card modal" onClick={e => e.stopPropagation()}>
+        <h3>Edit issue</h3>
+        <p className="muted" style={{ marginTop: -10 }}>Changes are logged in the activity timeline so the record stays transparent.</p>
+        {error && <div className="error-box">{error}</div>}
+        <form onSubmit={submit}>
+          <div className="field">
+            <label>Title</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label>Description</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="field">
+              <label>Category</label>
+              <select value={category} onChange={e => setCategory(e.target.value)}>
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Priority</label>
+              <select value={priority} onChange={e => setPriority(e.target.value)}>
+                {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="field">
+            <label>Add more photos (optional)</label>
+            <input type="file" accept="image/*" multiple onChange={pickFiles} />
+            {previews.length > 0 && (
+              <div className="photo-thumbs">
+                {previews.map((src, i) => <img key={i} src={src} alt="" />)}
+              </div>
+            )}
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={close}>Cancel</button>
+            <button className="btn btn-teal" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
