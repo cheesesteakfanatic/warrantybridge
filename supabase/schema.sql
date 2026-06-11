@@ -195,3 +195,32 @@ alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.message_reads;
 alter publication supabase_realtime add table public.issues;
 alter publication supabase_realtime add table public.issue_events;
+
+-- ===== v2: notifications, email via Resend (pg_net), household manager =====
+create extension if not exists pg_net;
+create schema if not exists private;
+create table if not exists private.secrets (name text primary key, value text not null);
+-- insert your Resend key: insert into private.secrets values ('resend_key','re_...');
+
+alter table public.profiles add column if not exists email_notifications boolean not null default true;
+
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  household_id uuid, issue_id uuid,
+  kind text not null, title text not null, body text not null default '',
+  read_at timestamptz, created_at timestamptz not null default now()
+);
+alter table public.notifications enable row level security;
+create policy "notif read own" on public.notifications for select to authenticated using (user_id = auth.uid());
+create policy "notif update own" on public.notifications for update to authenticated using (user_id = auth.uid());
+alter publication supabase_realtime add table public.notifications;
+
+-- Manager (home creator) may remove members; anyone may leave.
+create policy "members remove" on public.household_members for delete to authenticated
+using (user_id = auth.uid()
+  or exists(select 1 from public.households h where h.id = household_id and h.created_by = auth.uid()));
+
+-- queue_notifications + per-event triggers: see project history; they insert a
+-- notification row per member (except the actor) and send an email through
+-- Resend via net.http_post when the member has email_notifications enabled.
