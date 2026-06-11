@@ -66,13 +66,12 @@ export default function Households({ profile, openHousehold }) {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-ghost" onClick={() => { setShowJoin(true); setError('') }}>Join with code</button>
-          <button className="btn btn-teal" onClick={() => { setShowCreate(true); setError('') }}>+ New home</button>
+          <button className="btn btn-accent" onClick={() => { setShowCreate(true); setError('') }}>+ New home</button>
         </div>
       </div>
 
       {rows.length === 0 ? (
         <div className="card empty">
-          <div className="big">🏠</div>
           <h3>No homes yet</h3>
           <p>Create a home to start a warranty record, or join one with an invite code from your {profile.role === 'builder' ? 'homebuyer' : 'builder'}.</p>
         </div>
@@ -108,7 +107,7 @@ export default function Households({ profile, openHousehold }) {
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancel</button>
-                <button className="btn btn-teal" disabled={busy}>{busy ? 'Creating…' : 'Create home'}</button>
+                <button className="btn btn-accent" disabled={busy}>{busy ? 'Creating…' : 'Create home'}</button>
               </div>
             </form>
           </div>
@@ -128,7 +127,7 @@ export default function Households({ profile, openHousehold }) {
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowJoin(false)}>Cancel</button>
-                <button className="btn btn-teal" disabled={busy}>{busy ? 'Joining…' : 'Join home'}</button>
+                <button className="btn btn-accent" disabled={busy}>{busy ? 'Joining…' : 'Join home'}</button>
               </div>
             </form>
           </div>
