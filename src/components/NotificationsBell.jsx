@@ -45,6 +45,11 @@ export default function NotificationsBell({ profile, openIssue }) {
     }
   }
 
+  async function clearAll() {
+    await supabase.from('notifications').delete().eq('user_id', profile.id)
+    setItems([])
+  }
+
   return (
     <div className="bell-wrap" ref={wrapRef}>
       <button className="bell-btn" onClick={toggle} title="Notifications">
@@ -53,7 +58,10 @@ export default function NotificationsBell({ profile, openIssue }) {
       </button>
       {open && (
         <div className="bell-panel card">
-          <div className="bell-head">Notifications</div>
+          <div className="bell-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Notifications</span>
+            {items.length > 0 && <button className="linklike" style={{ fontSize: 11.5, textTransform: 'none', letterSpacing: 0 }} onClick={clearAll}>Clear all</button>}
+          </div>
           {items.length === 0 && <div className="muted" style={{ padding: '18px 16px' }}>Nothing yet. Activity on your homes will show up here.</div>}
           {items.map(n => (
             <button key={n.id} className={`bell-item ${n.read_at ? '' : 'unread'}`}
