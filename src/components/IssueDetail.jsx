@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase, uploadImage, publicUrl } from '../lib/supabase'
 import { STATUSES, CATEGORIES, PRIORITIES, statusMeta, fmtDateTime, initials } from '../lib/helpers'
+import { IArrowLeft, IPencil, ICamera, IImage, ICheck } from './Icons'
 
 export default function IssueDetail({ issueId, profile, back }) {
   const [issue, setIssue] = useState(null)
@@ -134,14 +135,14 @@ export default function IssueDetail({ issueId, profile, back }) {
 
   return (
     <>
-      <button className="crumb" onClick={back}>← Back to home</button>
+      <button className="crumb" onClick={back}><IArrowLeft size={15} /> Back to home</button>
 
       <div className="card detail-head">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <h2>{issue.title}</h2>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {issue.created_by === profile.id && !['closed'].includes(issue.status) && (
-              <button className="btn btn-sm btn-ghost" onClick={() => setShowEdit(true)}>✎ Edit</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => setShowEdit(true)}><IPencil size={13} /> Edit</button>
             )}
             <span className="badge" style={{ color: sm.color, background: sm.bg, fontSize: 13, padding: '6px 14px' }}>
               <span className="dot" />{sm.label}
@@ -185,7 +186,7 @@ export default function IssueDetail({ issueId, profile, back }) {
             {issue.status === 'resolved' ? (
               <>
                 <span style={{ fontSize: 13.5, fontWeight: 600 }}>Your builder marked this resolved. Does everything look good?</span>
-                <button className="btn btn-sm btn-teal" disabled={statusBusy} onClick={() => changeStatus('closed')}>✓ Confirm & close</button>
+                <button className="btn btn-sm btn-accent" disabled={statusBusy} onClick={() => changeStatus('closed')}><ICheck size={14} /> Confirm & close</button>
                 <button className="btn btn-sm btn-ghost" disabled={statusBusy} onClick={() => changeStatus('open')}>Not fixed — reopen</button>
               </>
             ) : issue.status === 'closed' ? (
@@ -291,8 +292,8 @@ export default function IssueDetail({ issueId, profile, back }) {
         <form className="composer" onSubmit={send}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickAttach} />
           <input ref={camMsgRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pickAttach} />
-          <button type="button" className="icon-btn" title="Take a photo" onClick={() => camMsgRef.current?.click()}>📷</button>
-          <button type="button" className="icon-btn" title="Attach a photo from your library" onClick={() => fileRef.current?.click()}>🖼️</button>
+          <button type="button" className="icon-btn" title="Take a photo" onClick={() => camMsgRef.current?.click()}><ICamera size={17} /></button>
+          <button type="button" className="icon-btn" title="Attach a photo from your library" onClick={() => fileRef.current?.click()}><IImage size={17} /></button>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
@@ -392,8 +393,8 @@ function EditIssueModal({ issue, profile, close, done }) {
           <div className="field">
             <label>Add more photos (optional)</label>
             <div className="photo-buttons">
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => camRef.current?.click()}>📷 Take photo</button>
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => galRef.current?.click()}>🖼️ Choose photos</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => camRef.current?.click()}><ICamera size={14} /> Take photo</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => galRef.current?.click()}><IImage size={14} /> Choose photos</button>
             </div>
             <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFiles} />
             <input ref={galRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={addFiles} />
