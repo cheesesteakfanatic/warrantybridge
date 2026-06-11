@@ -19,6 +19,7 @@ export default function IssueDetail({ issueId, profile, back }) {
   const [error, setError] = useState('')
   const threadRef = useRef(null)
   const fileRef = useRef(null)
+  const camMsgRef = useRef(null)
 
   const load = useCallback(async () => {
     const [{ data: iss }, { data: ph }, { data: ev }, { data: msgs }] = await Promise.all([
@@ -289,7 +290,9 @@ export default function IssueDetail({ issueId, profile, back }) {
         {/* composer */}
         <form className="composer" onSubmit={send}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickAttach} />
-          <button type="button" className="icon-btn" title="Attach photo" onClick={() => fileRef.current?.click()}>📷</button>
+          <input ref={camMsgRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={pickAttach} />
+          <button type="button" className="icon-btn" title="Take a photo" onClick={() => camMsgRef.current?.click()}>📷</button>
+          <button type="button" className="icon-btn" title="Attach a photo from your library" onClick={() => fileRef.current?.click()}>🖼️</button>
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
@@ -314,11 +317,14 @@ function EditIssueModal({ issue, profile, close, done }) {
   const [previews, setPreviews] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const camRef = useRef(null)
+  const galRef = useRef(null)
 
-  function pickFiles(e) {
-    const list = Array.from(e.target.files || []).slice(0, 6)
+  function addFiles(e) {
+    const list = [...files, ...Array.from(e.target.files || [])].slice(0, 6)
     setFiles(list)
     setPreviews(list.map(f => URL.createObjectURL(f)))
+    e.target.value = ''
   }
 
   async function submit(e) {
@@ -385,7 +391,12 @@ function EditIssueModal({ issue, profile, close, done }) {
           </div>
           <div className="field">
             <label>Add more photos (optional)</label>
-            <input type="file" accept="image/*" multiple onChange={pickFiles} />
+            <div className="photo-buttons">
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => camRef.current?.click()}>📷 Take photo</button>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => galRef.current?.click()}>🖼️ Choose photos</button>
+            </div>
+            <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={addFiles} />
+            <input ref={galRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={addFiles} />
             {previews.length > 0 && (
               <div className="photo-thumbs">
                 {previews.map((src, i) => <img key={i} src={src} alt="" />)}
