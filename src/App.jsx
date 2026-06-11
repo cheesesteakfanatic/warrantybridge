@@ -21,7 +21,10 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s)
+      if (_e === 'SIGNED_IN' || _e === 'SIGNED_OUT') setView({ name: 'households' })
+    })
     return () => sub.subscription.unsubscribe()
   }, [])
 
@@ -75,10 +78,11 @@ export default function App() {
 
       <main className="main">
         {inviteMsg && <div className="error-box">{inviteMsg} <button className="btn btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => setInviteMsg('')}>Dismiss</button></div>}
-        {view.name === 'households' && (
+        {!profile && <div className="spinner" />}
+        {profile && view.name === 'households' && (
           <Households profile={profile} openHousehold={(id) => setView({ name: 'household', id })} />
         )}
-        {view.name === 'household' && (
+        {profile && view.name === 'household' && (
           <HouseholdView
             householdId={view.id}
             profile={profile}
@@ -86,7 +90,7 @@ export default function App() {
             openIssue={(issueId) => setView({ name: 'issue', id: issueId, householdId: view.id })}
           />
         )}
-        {view.name === 'issue' && (
+        {profile && view.name === 'issue' && (
           <IssueDetail
             issueId={view.id}
             profile={profile}
